@@ -1,4 +1,24 @@
 import {
+  API_TYPES,
+  buildAuthorizationUrl,
+  exchangeOAuthCode,
+  generatePKCE,
+  listFetchProviders,
+  listImageSearchProviders,
+  listSearchProviders,
+  loadOAuthCredentials,
+  loadSavedConfig,
+  loadWebConfig,
+  OAUTH_PROVIDERS,
+  type OAuthFlowState,
+  removeOAuthCredentials,
+  saveConfig,
+  saveOAuthCredentials,
+  saveWebConfig,
+  THINKING_LEVELS,
+  type ThinkingLevel,
+} from "@office-agents/sdk";
+import {
   Check,
   ChevronDown,
   ChevronUp,
@@ -11,26 +31,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
-import {
-  buildAuthorizationUrl,
-  exchangeOAuthCode,
-  generatePKCE,
-  loadOAuthCredentials,
-  OAUTH_PROVIDERS,
-  type OAuthFlowState,
-  removeOAuthCredentials,
-  saveOAuthCredentials,
-} from "../oauth";
-import {
-  API_TYPES,
-  loadSavedConfig,
-  saveConfig,
-  THINKING_LEVELS,
-  type ThinkingLevel,
-} from "../provider-config";
-import { loadWebConfig, saveWebConfig } from "../web/config";
-import { listFetchProviders } from "../web/fetch";
-import { listSearchProviders } from "../web/search";
 import { useChat } from "./chat-context";
 
 function SkillsSection() {
@@ -170,6 +170,7 @@ export function SettingsPanel() {
     setProviderConfig,
     availableProviders,
     getModelsForProvider,
+    toggleExpandToolCalls,
     adapter,
   } = useChat();
 
@@ -197,6 +198,9 @@ export function SettingsPanel() {
   const [webSearchProvider, setWebSearchProvider] = useState(
     () => savedWeb.searchProvider,
   );
+  const [imageSearchProvider, setImageSearchProvider] = useState(
+    () => savedWeb.imageSearchProvider,
+  );
   const [webFetchProvider, setWebFetchProvider] = useState(
     () => savedWeb.fetchProvider,
   );
@@ -220,6 +224,7 @@ export function SettingsPanel() {
   const [oauthCodeInput, setOauthCodeInput] = useState("");
 
   const followMode = state.providerConfig?.followMode ?? true;
+  const expandToolCalls = state.providerConfig?.expandToolCalls ?? false;
   const isCustom = provider === "custom";
 
   const updateAndSync = useCallback(
@@ -268,6 +273,7 @@ export function SettingsPanel() {
           proxyUrl: pu,
           thinking: t,
           followMode,
+          expandToolCalls,
           apiType: at,
           customBaseUrl: cb,
           authMethod: am,
@@ -280,6 +286,7 @@ export function SettingsPanel() {
           proxyUrl: pu,
           thinking: t,
           followMode,
+          expandToolCalls,
           apiType: at,
           customBaseUrl: cb,
           authMethod: am,
@@ -297,6 +304,7 @@ export function SettingsPanel() {
       customBaseUrl,
       authMethod,
       followMode,
+      expandToolCalls,
       setProviderConfig,
     ],
   );
@@ -305,15 +313,19 @@ export function SettingsPanel() {
 
   const hasOAuth = provider in OAUTH_PROVIDERS;
   const searchProviders = listSearchProviders();
+  const imageSearchProviders = listImageSearchProviders();
   const fetchProviders = listFetchProviders();
   const needsBraveKey = webSearchProvider === "brave";
-  const needsSerperKey = webSearchProvider === "serper";
+  const needsSerperKey =
+    webSearchProvider === "serper" ||
+    (adapter.hasImageSearch && imageSearchProvider === "serper");
   const needsExaKey = webSearchProvider === "exa" || webFetchProvider === "exa";
 
   const updateWebSettings = useCallback(
     (
       updates: Partial<{
         searchProvider: string;
+        imageSearchProvider: string;
         fetchProvider: string;
         braveApiKey: string;
         serperApiKey: string;
@@ -321,12 +333,17 @@ export function SettingsPanel() {
       }>,
     ) => {
       const nextSearchProvider = updates.searchProvider ?? webSearchProvider;
+      const nextImageSearchProvider =
+        updates.imageSearchProvider ?? imageSearchProvider;
       const nextFetchProvider = updates.fetchProvider ?? webFetchProvider;
       const nextBraveApiKey = updates.braveApiKey ?? braveApiKey;
       const nextSerperApiKey = updates.serperApiKey ?? serperApiKey;
       const nextExaApiKey = updates.exaApiKey ?? exaApiKey;
 
       if ("searchProvider" in updates) setWebSearchProvider(nextSearchProvider);
+      if ("imageSearchProvider" in updates) {
+        setImageSearchProvider(nextImageSearchProvider);
+      }
       if ("fetchProvider" in updates) setWebFetchProvider(nextFetchProvider);
       if ("braveApiKey" in updates) setBraveApiKey(nextBraveApiKey);
       if ("serperApiKey" in updates) setSerperApiKey(nextSerperApiKey);
@@ -334,6 +351,7 @@ export function SettingsPanel() {
 
       saveWebConfig({
         searchProvider: nextSearchProvider,
+        imageSearchProvider: nextImageSearchProvider,
         fetchProvider: nextFetchProvider,
         apiKeys: {
           brave: nextBraveApiKey,
@@ -342,7 +360,14 @@ export function SettingsPanel() {
         },
       });
     },
-    [webSearchProvider, webFetchProvider, braveApiKey, serperApiKey, exaApiKey],
+    [
+      webSearchProvider,
+      imageSearchProvider,
+      webFetchProvider,
+      braveApiKey,
+      serperApiKey,
+      exaApiKey,
+    ],
   );
 
   const handleProviderChange = (newProvider: string) => {
@@ -820,6 +845,33 @@ export function SettingsPanel() {
             </p>
           </div>
 
+          {/* Expand Tool Calls */}
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs text-(--chat-text-secondary)">
+                Expand Tool Calls
+              </span>
+              <p className="text-[10px] text-(--chat-text-muted) mt-0.5">
+                Show tool call details expanded by default
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={toggleExpandToolCalls}
+              className={`
+                w-10 h-5 rounded-full transition-colors relative
+                ${expandToolCalls ? "bg-(--chat-accent)" : "bg-(--chat-border)"}
+              `}
+            >
+              <span
+                className={`
+                  absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform
+                  ${expandToolCalls ? "left-5" : "left-0.5"}
+                `}
+              />
+            </button>
+          </div>
+
           <div className="border-t border-(--chat-border) pt-4 space-y-3">
             <div className="text-[10px] uppercase tracking-widest text-(--chat-text-muted)">
               web tools
@@ -849,6 +901,33 @@ export function SettingsPanel() {
                 Used by web-search.
               </p>
             </label>
+
+            {adapter.hasImageSearch && (
+              <label className="block">
+                <span className="block text-xs text-(--chat-text-secondary) mb-1.5">
+                  Default Image Search Provider
+                </span>
+                <select
+                  value={imageSearchProvider}
+                  onChange={(e) =>
+                    updateWebSettings({ imageSearchProvider: e.target.value })
+                  }
+                  className="w-full bg-(--chat-input-bg) text-(--chat-text-primary)
+                             text-sm px-3 py-2 border border-(--chat-border)
+                             focus:outline-none focus:border-(--chat-border-active)"
+                  style={inputStyle}
+                >
+                  {imageSearchProviders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-(--chat-text-muted) mt-1">
+                  Used by image-search.
+                </p>
+              </label>
+            )}
 
             <label className="block">
               <span className="block text-xs text-(--chat-text-secondary) mb-1.5">

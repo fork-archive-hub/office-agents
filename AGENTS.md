@@ -4,9 +4,23 @@
 
 **Office Agents** is a pnpm monorepo containing Microsoft Office Add-ins with integrated AI chat interfaces. Users can chat with LLM providers (OpenAI, Anthropic, Google, etc.) directly within Office apps using their own API keys (BYOK). The agent has Office read/write tools, a sandboxed bash shell, and a virtual filesystem for file uploads.
 
-Currently contains:
-- **@office-agents/core** — Shared chat UI, BYOK auth, storage, VFS, skills, and agent lifecycle
-- **@office-agents/excel** — Excel-specific tools, Office.js wrappers, and system prompt
+- **@office-agents/sdk** (`packages/sdk/`) — Headless SDK: agent runtime, tools (bash, read), storage, VFS, skills, OAuth, web search/fetch, provider config
+- **@office-agents/core** (`packages/core/`) — React chat UI layer: re-exports SDK + ChatInterface, settings panel, sessions, message rendering
+- **@office-agents/excel** (`packages/excel/`) — Excel Add-in: spreadsheet tools, Office.js wrappers, system prompt, cell-range follow mode
+- **@office-agents/powerpoint** (`packages/powerpoint/`) — PowerPoint Add-in: slide/OOXML tools, JSZip-based PPTX editing, system prompt
+
+### Key Paths
+
+- `packages/sdk/src/runtime.ts` — `AgentRuntime` class (agent lifecycle, streaming, model resolution)
+- `packages/sdk/src/tools/` — Shared tools (`bash.ts`, `read-file.ts`, `types.ts` with `defineTool`)
+- `packages/sdk/src/vfs/` — Virtual filesystem + custom commands (`setCustomCommands`)
+- `packages/sdk/src/storage/` — IndexedDB sessions, VFS file persistence, skills
+- `packages/core/src/chat/` — React chat components (`chat-interface.tsx`, `chat-context.tsx`, `app-adapter.ts`, `settings-panel.tsx`)
+- `packages/excel/src/lib/adapter.ts` — Excel `AppAdapter` (tools, prompt, metadata, follow mode)
+- `packages/excel/src/lib/tools/` — Excel-specific tools (`set-cell-range`, `get-cell-ranges`, `eval-officejs`, etc.)
+- `packages/powerpoint/src/lib/adapter.tsx` — PowerPoint `AppAdapter` (tools, prompt, metadata)
+- `packages/powerpoint/src/lib/tools/` — PPT tools (`edit-slide-xml`, `screenshot-slide`, `edit-slide-chart`, etc.)
+- `packages/powerpoint/src/lib/pptx/` — OOXML/PPTX helpers (`slide-zip.ts`, `xml-utils.ts`)
 
 ## Tech Stack
 
@@ -20,93 +34,6 @@ Currently contains:
 - **Virtual Filesystem / Bash**: `just-bash` (in-memory VFS + shell)
 - **Dev Server**: Vite dev server with HTTPS
 - **Monorepo**: pnpm workspaces
-
-## Project Structure
-
-```
-office-agents/
-├── pnpm-workspace.yaml
-├── package.json                     # Root scripts (typecheck, lint, build)
-├── biome.json                       # Shared linter/formatter config
-├── tsconfig.json                    # Root tsconfig with project references
-├── packages/
-│   ├── core/                        # @office-agents/core — shared library
-│   │   ├── package.json
-│   │   ├── tsconfig.json
-│   │   └── src/
-│   │       ├── index.ts             # Main exports
-│   │       ├── index.css            # CSS variables + markdown styles
-│   │       ├── lockdown.ts          # SES lockdown for Office.js
-│   │       ├── sandbox.ts           # Sandboxed eval via SES Compartment
-│   │       ├── message-utils.ts     # AgentMessage → ChatMessage, stats
-│   │       ├── provider-config.ts   # Provider config load/save, custom endpoints
-│   │       ├── truncate.ts          # Output truncation (head/tail)
-│   │       ├── chat/                # Chat UI components (React)
-│   │       │   ├── index.ts
-│   │       │   ├── app-adapter.ts   # AppAdapter interface (tools, prompt, hooks)
-│   │       │   ├── chat-context.tsx # State, agent lifecycle, streaming
-│   │       │   ├── chat-interface.tsx # Tabs, sessions, drag-and-drop
-│   │       │   ├── chat-input.tsx   # Input with file upload
-│   │       │   ├── message-list.tsx # Message renderer with tool calls
-│   │       │   ├── settings-panel.tsx # Provider/model/auth/skills config
-│   │       │   ├── error-boundary.tsx
-│   │       │   └── types.ts
-│   │       ├── oauth/index.ts       # OAuth PKCE (Anthropic, OpenAI Codex)
-│   │       ├── storage/             # IndexedDB (sessions, VFS files, skills)
-│   │       │   ├── db.ts
-│   │       │   └── index.ts
-│   │       ├── vfs/index.ts         # Virtual filesystem (just-bash)
-│   │       ├── skills/index.ts      # Skill install/uninstall/prompt injection
-│   │       ├── tools/               # Shared tools
-│   │       │   ├── types.ts         # defineTool, ToolResult helpers
-│   │       │   ├── bash.ts          # Sandboxed bash execution
-│   │       │   └── read-file.ts     # VFS file reader (text + images)
-│   │       └── web/                 # Web search & fetch providers
-│   │           ├── types.ts
-│   │           ├── config.ts
-│   │           ├── search.ts
-│   │           └── fetch.ts
-│   │
-│   └── excel/                       # @office-agents/excel — Excel add-in
-│       ├── package.json
-│       ├── tsconfig.json
-│       ├── vite.config.ts
-│       ├── manifest.xml             # Office Add-in manifest (dev)
-│       ├── manifest.prod.xml        # Office Add-in manifest (prod)
-│       ├── manifest.json            # Unified manifest
-│       └── src/
-│           ├── taskpane.html
-│           ├── taskpane/
-│           │   ├── index.tsx        # React entry point
-│           │   ├── index.css        # Tailwind config
-│           │   └── components/
-│           │       └── app.tsx      # Wires core ChatInterface with Excel adapter
-│           ├── lib/
-│           │   ├── adapter.ts       # Excel AppAdapter (tools, prompt, follow mode)
-│           │   ├── dirty-tracker.ts # Track modified cell ranges
-│           │   ├── tools/           # Excel-specific tools
-│           │   │   ├── index.ts     # EXCEL_TOOLS array
-│           │   │   ├── types.ts     # defineTool with DirtyRange tracking
-│           │   │   ├── eval-officejs.ts
-│           │   │   ├── get-cell-ranges.ts
-│           │   │   ├── set-cell-range.ts
-│           │   │   └── ...          # Other Excel tools
-│           │   ├── excel/           # Excel API wrappers
-│           │   │   ├── api.ts
-│           │   │   ├── sheet-id-map.ts
-│           │   │   └── tracked-context.ts
-│           │   └── vfs/
-│           │       └── custom-commands.ts  # csv-to-sheet, sheet-to-csv, etc.
-│           ├── commands/
-│           │   └── commands.ts
-│           └── shims/
-│               └── util-types-shim.js
-├── .plan/                           # Development plans
-├── CHANGELOG.md
-└── .github/workflows/
-    ├── ci.yml
-    └── release.yml
-```
 
 ## Key Architecture
 
@@ -132,25 +59,18 @@ interface AppAdapter {
 
 The core `ChatInterface` component accepts an adapter and handles all generic chat UI, agent lifecycle, sessions, settings, file uploads, and skills.
 
-### Excel Adapter
-
-The Excel adapter (`packages/excel/src/lib/adapter.tsx`):
-- Registers `EXCEL_TOOLS` (16 Excel tools + bash + read from core)
-- Builds Excel-specific system prompt with tool docs and citation syntax
-- Provides workbook metadata (sheet names, used ranges) per prompt
-- Handles follow-mode navigation to dirty ranges after tool execution
-- Handles `#cite:sheetId!range` links in markdown
-
 ### VFS Custom Commands
 
-App-specific VFS commands are registered via `setCustomCommands()` from core. Excel registers: `csv-to-sheet`, `sheet-to-csv`, `pdf-to-text`, `docx-to-text`, `xlsx-to-csv`, `image-to-sheet`, `web-search`, `web-fetch`.
+App-specific VFS commands are registered via `setCustomCommands()` from SDK. Excel registers: `csv-to-sheet`, `sheet-to-csv`, `pdf-to-text`, `docx-to-text`, `xlsx-to-csv`, `image-to-sheet`, `web-search`, `web-fetch`. PowerPoint registers: `pdf-to-text`, `pdf-to-images`, `docx-to-text`, `xlsx-to-csv`, `web-search`, `web-fetch`.
 
 ## Development Commands
 
 ```bash
 pnpm install             # Install all dependencies
-pnpm dev-server          # Start Excel dev server (https://localhost:3000)
-pnpm start               # Launch Excel with add-in sideloaded
+pnpm dev-server:excel    # Start Excel dev server (https://localhost:3000)
+pnpm dev-server:ppt      # Start PowerPoint dev server (https://localhost:3001)
+pnpm start:excel         # Launch Excel with add-in sideloaded
+pnpm start:ppt           # Launch PowerPoint with add-in sideloaded
 pnpm build               # Build all packages
 pnpm lint                # Run Biome linter
 pnpm format              # Format code with Biome
@@ -167,18 +87,29 @@ pnpm validate            # Validate Office manifests
 
 ## Release Workflow
 
-Releases are triggered by pushing a version tag. CI runs quality checks, deploys to Cloudflare Pages, and creates a GitHub release with changelog.
+Each app is released independently with its own version tag, changelog, and Cloudflare Pages project.
 
-### Steps
+| Package    | Tag prefix  | Changelog                          | Deploy target    |
+| ---------- | ----------- | ---------------------------------- | ---------------- |
+| Excel      | `excel-v*`  | `packages/excel/CHANGELOG.md`      | CF Pages `openexcel` |
+| PowerPoint | `ppt-v*`    | `packages/powerpoint/CHANGELOG.md` | CF Pages `openppt`   |
+| SDK        | `sdk-v*`    | `packages/sdk/CHANGELOG.md`        | npm `@office-agents/sdk` |
 
-1. Update `CHANGELOG.md`
-2. Bump version: `pnpm version patch` (or minor/major)
-3. Push: `git push && git push --tags`
-4. CI deploys `packages/excel/dist` to Cloudflare Pages
+### Steps (per app)
+
+1. Add changes under `## [Unreleased]` in the app's `CHANGELOG.md`
+2. Run the release script:
+   ```bash
+   pnpm release:excel patch   # or minor/major
+   pnpm release:ppt patch     # or minor/major
+   pnpm release:sdk patch     # or minor/major
+   ```
+3. The script bumps the version, stamps the changelog, commits, tags (`excel-v*` / `ppt-v*`), and pushes
+4. CI builds, deploys to Cloudflare Pages, and creates a GitHub release
 
 ## Configuration Storage
 
-User settings stored in browser localStorage (legacy `openexcel-` prefix, see TODO.md):
+User settings stored in browser localStorage (legacy `openexcel-` prefix):
 
 | Key                            | Contents                                                                                           |
 | ------------------------------ | -------------------------------------------------------------------------------------------------- |

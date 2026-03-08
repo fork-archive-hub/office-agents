@@ -1,4 +1,9 @@
-import { sandboxedEval } from "@office-agents/core";
+import {
+  readFile,
+  readFileBuffer,
+  sandboxedEval,
+  writeFile,
+} from "@office-agents/core";
 import { Type } from "@sinclair/typebox";
 import type { DirtyRange } from "../dirty-tracker";
 import { createTrackedContext } from "../excel/tracked-context";
@@ -30,7 +35,9 @@ export const evalOfficeJsTool = defineTool({
   parameters: Type.Object({
     code: Type.String({
       description:
-        "JavaScript code to execute. Has access to `context` (Excel.RequestContext). " +
+        "JavaScript code to execute. Has access to `context` (Excel.RequestContext), " +
+        "readFile(path) returns Promise<string>, readFileBuffer(path) returns Promise<Uint8Array>, " +
+        "and writeFile(path, content) returns Promise<void> (content: string | Uint8Array) for VFS files. " +
         "Must be valid async code. Return a value to get it as result. " +
         "Example: `const range = context.workbook.worksheets.getActiveWorksheet().getRange('A1'); range.load('values'); await context.sync(); return range.values;`",
     }),
@@ -52,6 +59,9 @@ export const evalOfficeJsTool = defineTool({
         const execResult = await sandboxedEval(params.code, {
           context: trackedContext,
           Excel,
+          readFile,
+          readFileBuffer,
+          writeFile,
         });
 
         dirtyRanges = getDirtyRanges();
@@ -71,6 +81,19 @@ export const evalOfficeJsTool = defineTool({
       }
       return toolSuccess(response);
     } catch (error) {
+      if (error instanceof OfficeExtension.Error) {
+        const parts = [error.message];
+        if (error.code) parts.push(`Code: ${error.code}`);
+        if (error.debugInfo) {
+          const { errorLocation, statement, surroundingStatements } =
+            error.debugInfo;
+          if (errorLocation) parts.push(`Location: ${errorLocation}`);
+          if (statement) parts.push(`Statement: ${statement}`);
+          if (surroundingStatements?.length)
+            parts.push(`Context: ${surroundingStatements.join("; ")}`);
+        }
+        return toolError(parts.join("\n"));
+      }
       const message =
         error instanceof Error ? error.message : "Unknown error executing code";
       return toolError(message);
