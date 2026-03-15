@@ -1,6 +1,6 @@
 {
   "name": "@office-agents/bridge",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "description": "Local HTTPS/WebSocket RPC bridge + CLI for developing and debugging Office Add-ins",
   "license": "MIT",

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-03-15
+
 ### Features
 
 - **Initial release** — Local HTTPS/WebSocket RPC bridge for live Office add-in development.
